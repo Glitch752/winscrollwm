@@ -47,7 +47,7 @@ def print_ascii_layout(monitors: list[Monitor], focused_monitor: int | None):
         if not buf:
             buf.append("")
         while len(buf) < height:
-            buf.append(" " * len(buf[0]))
+            buf.append(" " * len_without_ansi(buf[0]))
         
         if len(buf[0]) > 0:
             for i in range(len(buf)):
