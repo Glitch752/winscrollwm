@@ -12,9 +12,15 @@ async def main():
         return
 
     ahk_task = asyncio.create_task(read_ahk_output(ahk, wm))
-    await ahk_task
+    wm_task = asyncio.create_task(wm.run())
+    
+    await asyncio.gather(ahk_task, wm_task)
     
     ahk.terminate()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except ProcessLookupError:
+        # yeah whatever asyncio is just weird
+        pass

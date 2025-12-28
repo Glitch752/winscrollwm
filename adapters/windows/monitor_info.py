@@ -12,4 +12,8 @@ def list_monitors() -> list[WinMonitor]:
             work=Rect(*info['Work']),
             device=info['Device']
         ))
+    
+    # Sort by left coordinate, then top
+    monitors.sort(key=lambda m: (m.monitor.left(), m.monitor.top()))
+    
     return monitors

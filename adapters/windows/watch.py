@@ -3,9 +3,11 @@ import threading
 from typing import Callable
 import win32gui
 import win32api
+import win32con
 import ctypes
 import ctypes.wintypes
 import logging
+import queue
 
 import typing
 
@@ -72,8 +74,16 @@ EVENT_OBJECT_DESTROY = 0x8001
 EVENT_OBJECT_SHOW = 0x8002
 EVENT_OBJECT_HIDE = 0x8003
 EVENT_OBJECT_LOCATIONCHANGE = 0x800B
+EVENT_OBJECT_NAMECHANGE = 0x800C
+EVENT_OBJECT_REORDER = 0x8004
+EVENT_OBJECT_FOCUS = 0x8005
+
+EVENT_SYSTEM_FOREGROUND = 0x0003
+EVENT_SYSTEM_MINIMIZESTART = 0x0016
+EVENT_SYSTEM_MINIMIZEEND = 0x0017
 
 WINEVENT_OUTOFCONTEXT = 0x0000
+WINEVENT_SKIPOWNPROCESS = 0x0002
 
 log = logging.getLogger(__name__)
 
@@ -87,15 +97,25 @@ class WinEventWatcher(threading.Thread):
     hooks: list[ctypes.wintypes.HANDLE]
     _running: threading.Event
     
+    # Used for running functions on this thread
+    # Windows is sometimes picky about event loops in the right places,
+    # so this is the easiest solution since we already have an event loop here
+    _call_queue: queue.Queue[Callable]
+    _thread_id: int | None
+    
     def __init__(self, adapter: "WindowsAdapter"):
         super().__init__(daemon=True)
         self.adapter = adapter
         self.hooks = []
         self._running = threading.Event()
+        self.name = "WinEventWatcher"
+        self._call_queue = queue.Queue()
+        self._thread_id = None
 
     def run(self):
+        self._thread_id = win32api.GetCurrentThreadId()
         self._running.set()
-        
+    
         ole32.CoInitializeEx(1)
 
         def callback(hWinEventHook, event, hwnd, idObject, idChild, dwEventThread, dwmsEventTime):
@@ -110,12 +130,32 @@ class WinEventWatcher(threading.Thread):
             elif event in (EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE):
                 log.debug(f"WinEventWatcher: Detected window destroyed/hidden: {hwnd}")
                 self.adapter.on_window_destroyed(hwnd)
+            elif event == EVENT_OBJECT_LOCATIONCHANGE:
+                self.adapter.on_window_moved(hwnd)
+            elif event == EVENT_SYSTEM_FOREGROUND:
+                self.adapter.on_foreground_changed(hwnd)
+            elif event == EVENT_OBJECT_NAMECHANGE:
+                self.adapter.on_window_title_changed(hwnd)
+            elif event == EVENT_SYSTEM_MINIMIZESTART:
+                self.adapter.on_window_minimized(hwnd)
+            elif event == EVENT_SYSTEM_MINIMIZEEND:
+                self.adapter.on_window_restored(hwnd)
 
         # Set hooks for relevant events
-        self.hooks.append(SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT))
-        self.hooks.append(SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT))
-        self.hooks.append(SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT))
-        self.hooks.append(SetWinEventHook(EVENT_OBJECT_HIDE, EVENT_OBJECT_HIDE, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT))
+        def listen(event: int):
+            self.hooks.append(SetWinEventHook(event, event, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS))
+        
+        listen(EVENT_OBJECT_CREATE)
+        listen(EVENT_OBJECT_DESTROY)
+        listen(EVENT_OBJECT_SHOW)
+        listen(EVENT_OBJECT_HIDE)
+        listen(EVENT_OBJECT_LOCATIONCHANGE)
+        listen(EVENT_OBJECT_NAMECHANGE)
+        # listen(EVENT_OBJECT_REORDER)
+        # listen(EVENT_OBJECT_FOCUS)
+        listen(EVENT_SYSTEM_FOREGROUND)
+        listen(EVENT_SYSTEM_MINIMIZESTART)
+        listen(EVENT_SYSTEM_MINIMIZEEND)
 
         # Message loop
         msg = ctypes.wintypes.MSG()
@@ -126,8 +166,16 @@ class WinEventWatcher(threading.Thread):
             elif ret == 0:
                 break
             else:
-                user32.TranslateMessage(ctypes.byref(msg))
-                user32.DispatchMessageW(ctypes.byref(msg))
+                if msg.message == win32con.WM_USER + 1:
+                    while self._call_queue.qsize() > 0:
+                        try:
+                            func = self._call_queue.get_nowait()
+                            func()
+                        except queue.Empty:
+                            break
+                else:
+                    user32.TranslateMessage(ctypes.byref(msg))
+                    user32.DispatchMessageW(ctypes.byref(msg))
         
         # Unhook events
         for hook in self.hooks:
@@ -141,3 +189,14 @@ class WinEventWatcher(threading.Thread):
         except Exception:
             pass
         self._running.clear()
+
+    def run_on_thread(self, func: Callable):
+        """
+        Schedules a function to run on the watcher's thread.
+        """
+        self._call_queue.put(func)
+        
+        if not self._running.is_set() or self._thread_id is None:
+            return
+        
+        win32gui.PostThreadMessage(self._thread_id, win32con.WM_USER + 1, 0, 0)

@@ -1,23 +1,6 @@
 from dataclasses import dataclass
-from typing import Tuple
-
-class Rect(Tuple[int, int, int, int]):
-    def __new__(cls, left: int, top: int, right: int, bottom: int):
-        return super(Rect, cls).__new__(cls, (left, top, right, bottom))
-
-    def left(self) -> int:
-        return self[0]
-    def top(self) -> int:
-        return self[1]
-    def right(self) -> int:
-        return self[2]
-    def bottom(self) -> int:
-        return self[3]
-    
-    def width(self) -> int:
-        return abs(self.right() - self.left())
-    def height(self) -> int:
-        return abs(self.bottom() - self.top())
+from adapters.windows.thumbnail.thumbnail_window import ThumbnailWindow
+from core.models import Rect
 
 @dataclass
 class WinMonitor:
@@ -27,3 +10,11 @@ class WinMonitor:
     # (work_left, work_top, work_right, work_bottom)
     work: Rect
     device: str
+
+@dataclass
+class WinWindow:
+    id: int
+    title: str
+    rect: Rect
+    
+    thumbnail: ThumbnailWindow | None = None

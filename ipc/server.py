@@ -42,21 +42,22 @@ async def read_ahk_output(proc: Process, wm: 'WindowManager'):
         cmd = cmd.decode('utf-8')
         
         print(f"> {cmd}")
+        
         if cmd == "exit":
             wm.exit()
             break
         handle_command(wm, cmd)
 
-def handle_command(wm, cmd):
-    match cmd:
+def handle_command(wm: 'WindowManager', cmd: str):
+    match cmd.split()[0]:
         case "focus_left":
             wm.move_focus_horizontal(-1)
         case "focus_right":
             wm.move_focus_horizontal(1)
         case "workspace_up":
-            wm.move_workspace_vertical(-1)
+            wm.move_workspace_focus(-1)
         case "workspace_down":
-            wm.move_workspace_vertical(1)
+            wm.move_workspace_focus(1)
         case "resize_inc":
             wm.resize_window(0.1)
         case "resize_dec":

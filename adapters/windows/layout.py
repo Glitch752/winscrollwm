@@ -1,13 +1,17 @@
 # adapters/windows/layout.py
+import ctypes
+from ctypes.wintypes import RECT
+from typing import cast
 import win32gui
 import win32con
-from typing import Tuple
 import math
+
+from log import log_error
 
 from .models import Rect
 from core.models import Workspace
 
-def layout_workspace_windows(workspace: Workspace, work_rect: Rect, gap_px: int):
+def layout_workspace_windows(workspace: Workspace, work_rect: Rect, monitor_rect: Rect, gap_px: int):
     """
     Layout windows in `workspace` within `work_rect` (left,top,right,bottom).
     Each window carries .width (float) meaning relative fraction of the workspace width.
@@ -17,6 +21,8 @@ def layout_workspace_windows(workspace: Workspace, work_rect: Rect, gap_px: int)
     """
     if not workspace.windows:
         return
+    
+    workspace.layout_windows()
 
     # compute available rectangle (apply outer gap)
     avail_w = work_rect.width() - 2 * gap_px
@@ -25,17 +31,29 @@ def layout_workspace_windows(workspace: Workspace, work_rect: Rect, gap_px: int)
         return
 
     # place windows left-to-right with inner gaps
-    x = work_rect.left() + gap_px
-    y = work_rect.top() + gap_px
+    screen_x = work_rect.left() + gap_px - int(avail_w * workspace.scroll_offset)
+    screen_y = work_rect.top() + gap_px
     for idx, win in enumerate(workspace.windows):
         w = math.floor(avail_w * win.width)
+        x = int(avail_w * win.x)
+        
+        rect = Rect(screen_x + x, screen_y, screen_x + x + w, screen_y + avail_h)
+        
+        # If the rectangle is totally outside of the monitor, hide the window
+        if not monitor_rect.intersects(rect):
+            
+            print(monitor_rect, rect)
+            try:
+                win32gui.ShowWindow(win.id, win32con.SW_MINIMIZE)
+            except Exception:
+                pass
+            continue
+        
         try:
             # MoveWindow expects (hwnd, x, y, width, height, repaint)
-            win32gui.MoveWindow(win.id, x, y, w, avail_h, True)
+            # win32gui.MoveWindow(win.id, *rect.sized(), True)
             # ensure it's not minimized / hidden by us
             win32gui.ShowWindow(win.id, win32con.SW_RESTORE)
-        except Exception:
+        except Exception as e:
             # ignore problematic windows for now
-            pass
-        
-        x += w + gap_px
+            log_error(f"Failed to layout window {win.id}: {e}")
