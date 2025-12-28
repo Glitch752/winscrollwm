@@ -20,6 +20,10 @@ class Adapter(ABC):
         pass
 
     @abstractmethod
+    def close_window(self, window: Window):
+        pass
+
+    @abstractmethod
     def refresh(self):
         pass
     

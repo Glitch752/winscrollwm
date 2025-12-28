@@ -11,4 +11,11 @@ for window in windowList {
     } catch {
         ; Ignore errors
     }
+    
+    ; Unhide
+    try {
+        WinShow("", window)
+    } catch {
+        ; Ignore errors
+    }
 }

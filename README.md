@@ -12,6 +12,7 @@ I've always been dissatisfied with Windows WMs' multi-monitor support: DWM is hi
 
 ## TODO
 - [ ] Use BeginDeferWindowPos for both regular layout and cloaking use to batch window updates
+- [ ] Disable cloaking for windows that don't strictly pass monitor boundaries
 - [ ] Better workspace management
 - [ ] Somehow implement an overview-like feature?
 - [ ] Animations?

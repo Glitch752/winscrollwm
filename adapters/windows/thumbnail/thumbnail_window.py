@@ -174,12 +174,12 @@ class ThumbnailWindow:
     def fixorder(self):
         if self.hwnd != 0:
             # Put the thumbnail just below the source window to ensure proper rendering
-            # win32gui.SetWindowPos(
-            #     self.hwnd,
-            #     self.hwnd_src,
-            #     0, 0, 0, 0,
-            #     win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE | win32con.SWP_NOREDRAW
-            # )
+            win32gui.SetWindowPos(
+                self.hwnd,
+                self.hwnd_src,
+                0, 0, 0, 0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE | win32con.SWP_NOREDRAW
+            )
             pass
     
     def hide(self):
@@ -191,7 +191,10 @@ class ThumbnailWindow:
     
     def close(self):
         if self.hwnd != 0:
-            win32gui.DestroyWindow(self.hwnd)
+            try:
+                win32gui.DestroyWindow(self.hwnd)
+            except Exception as e:
+                log_error(f"Failed to destroy thumbnail window: {e}")
             self.hwnd = 0
     
     def on_destroy(self):

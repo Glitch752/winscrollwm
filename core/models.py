@@ -15,13 +15,23 @@ class Window:
     # in screen-widths
     width: float = 1.0
 
+WorkspaceID = int
+workspace_id_autoinc: WorkspaceID = 0
+def _get_next_workspace_id() -> WorkspaceID:
+    global workspace_id_autoinc
+    workspace_id_autoinc += 1
+    return workspace_id_autoinc
+
 class Workspace:
+    id: WorkspaceID
     windows: List[Window]
     monitor: Optional["Monitor"] = None
     _focused_id: Optional[WindowID] = None
     scroll_offset: float = 0.0
     
     def __init__(self, windows: Optional[List[Window]] = None):
+        self.id = _get_next_workspace_id()
+        
         self.windows = windows if windows is not None else []
         for win in self.windows:
             win.workspace = self
@@ -39,6 +49,22 @@ class Workspace:
         for win in self.windows:
             win.x = x
             x += win.width
+        
+        self.scroll_to_focus()
+    
+    def focus_position(self, position: int):
+        if not self.windows:
+            self._focused_id = None
+            return
+        if position < 0:
+            position = len(self.windows) + position
+        position = max(0, min(position, len(self.windows) - 1))
+        self._focused_id = self.windows[position].id
+        
+        self.layout_windows()
+        self.scroll_to_focus()
+        
+        print(f"Workspace focus_position: focused_id={self._focused_id}")
     
     def move_focus(self, delta: int):
         if not self.windows:
@@ -59,6 +85,16 @@ class Workspace:
         print(f"Workspace move_focus: {current_index} -> {new_index} / {len(self.windows)}, focused_id={self._focused_id}")
     
     def scroll_to_focus(self):
+        # If the total width of windows is less than a screen, center them
+        total_width = sum(win.width for win in self.windows)
+        if total_width <= 1.0:
+            self.scroll_offset = (total_width - 1.0) / 2.0
+            return
+        else:
+            # If the scroll offset is out of bounds, clamp it
+            max_offset = total_width - 1.0
+            self.scroll_offset = max(0.0, min(self.scroll_offset, max_offset))
+        
         # Make sure the focused window is visible in the scroll offset
         focused_win = self.focused_window()
         
@@ -131,7 +167,7 @@ Rect.ZERO = Rect(0, 0, 0, 0)
 class Monitor:
     workspaces: List[Workspace]
     rect: Rect = Rect.ZERO
-    focused_workspace: int = 0
+    _focused_workspace: WorkspaceID
     
     def __init__(self, workspaces: Optional[List[Workspace]] = None, rect: Optional[Rect] = None):
         self.workspaces = workspaces if workspaces is not None else []
@@ -140,9 +176,34 @@ class Monitor:
         
         if rect is not None:
             self.rect = rect
+        
+        self._focused_workspace = self.workspaces[0].id if self.workspaces else -1
     
     def contains_point(self, x: int, y: int) -> bool:
         return self.rect.contains(x, y)
 
     def current_workspace(self):
-        return self.workspaces[self.focused_workspace]
+        for ws in self.workspaces:
+            if ws.id == self._focused_workspace:
+                return ws
+        if self.workspaces:
+            self._focused_workspace = self.workspaces[0].id
+            return self.workspaces[0]
+        
+        self.workspaces.append(Workspace())
+        return self.workspaces[0]
+    
+    def ensure_valid_workspaces(self):
+        # Ensure at least one workspace
+        if not self.workspaces:
+            self.workspaces.append(Workspace())
+        
+        # Ensure focused workspace is valid
+        if not any(ws.id == self._focused_workspace for ws in self.workspaces):
+            self._focused_workspace = self.workspaces[0].id
+        
+        # Ensure there is a free workspace at the top and bottom
+        if self.workspaces[0].windows:
+            self.workspaces.insert(0, Workspace())
+        if self.workspaces[-1].windows:
+            self.workspaces.append(Workspace())

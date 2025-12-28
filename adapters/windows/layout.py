@@ -50,10 +50,19 @@ def layout_workspace_windows(workspace: Workspace, work_rect: Rect, monitor_rect
             continue
         
         try:
-            # MoveWindow expects (hwnd, x, y, width, height, repaint)
+            # # MoveWindow expects (hwnd, x, y, width, height, repaint)
             # win32gui.MoveWindow(win.id, *rect.sized(), True)
-            # ensure it's not minimized / hidden by us
-            win32gui.ShowWindow(win.id, win32con.SW_RESTORE)
+            # # ensure it's not minimized / hidden by us
+            # win32gui.ShowWindow(win.id, win32con.SW_RESTORE)
+            win32gui.SetWindowPos(
+                win.id,
+                win32con.HWND_TOP,
+                rect.left(),
+                rect.top(),
+                rect.width(),
+                rect.height(),
+                win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE | win32con.SWP_SHOWWINDOW
+            )
         except Exception as e:
             # ignore problematic windows for now
             log_error(f"Failed to layout window {win.id}: {e}")
